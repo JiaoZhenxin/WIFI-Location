@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="surface">#F4F6F8</color>
+    <color name="panel">#FFFFFF</color>
+    <color name="panelStroke">#D0D7DE</color>
+    <color name="mapGrid">#DCE3EA</color>
+    <color name="referencePoint">#1F6FEB</color>
+    <color name="estimatePoint">#E5532D</color>
+    <color name="stablePoint">#2DA44E</color>
+    <color name="textPrimary">#0F1720</color>
+    <color name="textSecondary">#4B5563</color>
+</resources>

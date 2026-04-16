@@ -1,0 +1,24 @@
+# Android / Gradle
+.gradle/
+**/.gradle/
+build/
+**/build/
+local.properties
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
+
+# Workspace-only artifacts
+_inspect_demo/
+wifi-positioning-app/.idea/
+wifi-positioning-app/local.properties
+
+# Demo input
+demo/*.zip
+
+# Optional runtime notes
+memory/*.tmp

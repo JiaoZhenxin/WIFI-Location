@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Factory WiFi Locator</string>
+    <string name="status_idle">状态: 待命</string>
+    <string name="position_placeholder">位置: 等待扫描</string>
+    <string name="candidate_placeholder">候选点: 无</string>
+    <string name="start_scan">开始扫描</string>
+    <string name="stop_scan">停止扫描</string>
+    <string name="fingerprint_section">指纹采集</string>
+    <string name="point_name_hint">点位名称</string>
+    <string name="x_hint">X(m)</string>
+    <string name="y_hint">Y(m)</string>
+    <string name="save_fingerprint">保存当前指纹</string>
+    <string name="reset_database">恢复示例库</string>
+    <string name="scan_window_title">稳定观测窗口</string>
+</resources>
