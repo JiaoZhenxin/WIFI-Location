@@ -21,6 +21,9 @@ import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class MainActivity extends AppCompatActivity implements WifiScanner.Listener {
     private static final int WINDOW_SIZE = 6;
@@ -33,12 +36,19 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.Liste
     private EditText pointNameInput;
     private EditText pointXInput;
     private EditText pointYInput;
+    private Button startButton;
+    private Button stopButton;
+    private Button saveFingerprintButton;
+    private Button resetDatabaseButton;
 
     private final FingerprintStore fingerprintStore = new FingerprintStore();
     private final PositioningEngine positioningEngine = new PositioningEngine();
+    private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
+    private final AtomicInteger scanGeneration = new AtomicInteger();
     private WifiScanner wifiScanner;
-    private FingerprintDatabase database;
+    private volatile FingerprintDatabase database;
     private final Deque<Map<String, Integer>> scanWindow = new ArrayDeque<>();
+    private final Object scanWindowLock = new Object();
 
     private final ActivityResultLauncher<String[]> permissionLauncher =
             registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), result -> {
@@ -63,12 +73,13 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.Liste
         pointXInput = findViewById(R.id.pointXInput);
         pointYInput = findViewById(R.id.pointYInput);
 
-        Button startButton = findViewById(R.id.startButton);
-        Button stopButton = findViewById(R.id.stopButton);
-        Button saveFingerprintButton = findViewById(R.id.saveFingerprintButton);
-        Button resetDatabaseButton = findViewById(R.id.resetDatabaseButton);
+        startButton = findViewById(R.id.startButton);
+        stopButton = findViewById(R.id.stopButton);
+        saveFingerprintButton = findViewById(R.id.saveFingerprintButton);
+        resetDatabaseButton = findViewById(R.id.resetDatabaseButton);
 
         wifiScanner = new WifiScanner(this, this);
+        setControlsEnabled(false);
         loadDatabase();
 
         startButton.setOnClickListener(v -> ensurePermissionsAndStart());
@@ -81,6 +92,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.Liste
     protected void onDestroy() {
         super.onDestroy();
         wifiScanner.stop();
+        backgroundExecutor.shutdownNow();
     }
 
     @Override
@@ -93,20 +105,39 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.Liste
         if (database == null) {
             return;
         }
-        scanWindow.addLast(levels);
-        while (scanWindow.size() > WINDOW_SIZE) {
-            scanWindow.removeFirst();
-        }
+        final int generation = scanGeneration.incrementAndGet();
+        backgroundExecutor.execute(() -> {
+            List<Map<String, Integer>> windowSnapshot;
+            synchronized (scanWindowLock) {
+                scanWindow.addLast(levels);
+                while (scanWindow.size() > WINDOW_SIZE) {
+                    scanWindow.removeFirst();
+                }
+                windowSnapshot = new ArrayList<>(scanWindow);
+            }
 
-        Map<String, Double> stableObservation = positioningEngine.buildStableObservation(new ArrayList<>(scanWindow));
-        PositionEstimate estimate = positioningEngine.estimate(database, stableObservation, System.currentTimeMillis());
+            FingerprintDatabase currentDatabase = database;
+            if (currentDatabase == null) {
+                return;
+            }
 
-        runOnUiThread(() -> {
-            floorMapView.setEstimate(estimate);
-            scanText.setText(scanSummary);
-            positionText.setText(String.format("位置: 原始(%.2f, %.2f)m  稳定(%.2f, %.2f)m  半径≈%.2fm",
-                    estimate.rawX, estimate.rawY, estimate.filteredX, estimate.filteredY, estimate.confidenceMeters));
-            candidateText.setText(buildCandidateText(estimate.candidates));
+            Map<String, Double> stableObservation = positioningEngine.buildStableObservation(windowSnapshot);
+            PositionEstimate estimate = positioningEngine.estimate(
+                    currentDatabase, stableObservation, System.currentTimeMillis());
+            String positionMessage = String.format(
+                    "位置: 原始(%.2f, %.2f)m  稳定(%.2f, %.2f)m  半径≈%.2fm",
+                    estimate.rawX, estimate.rawY, estimate.filteredX, estimate.filteredY, estimate.confidenceMeters);
+            String candidateMessage = buildCandidateText(estimate.candidates);
+
+            runOnUiThread(() -> {
+                if (generation != scanGeneration.get()) {
+                    return;
+                }
+                floorMapView.setEstimate(estimate);
+                scanText.setText(scanSummary);
+                positionText.setText(positionMessage);
+                candidateText.setText(candidateMessage);
+            });
         });
     }
 
@@ -125,29 +156,62 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.Liste
     }
 
     private void loadDatabase() {
-        try {
-            database = fingerprintStore.load(this);
-            floorMapView.setDatabase(database);
-            statusText.setText("状态: 指纹库已加载，共 " + database.fingerprints.size() + " 个参考点");
-        } catch (IOException e) {
-            statusText.setText("状态: 指纹库加载失败");
-            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
-        }
+        statusText.setText("状态: 正在加载指纹库");
+        backgroundExecutor.execute(() -> {
+            try {
+                FingerprintDatabase loadedDatabase = fingerprintStore.load(this);
+                database = loadedDatabase;
+                runOnUiThread(() -> {
+                    floorMapView.setDatabase(loadedDatabase);
+                    statusText.setText("状态: 指纹库已加载，共 " + loadedDatabase.fingerprints.size() + " 个参考点");
+                    setControlsEnabled(true);
+                });
+            } catch (IOException e) {
+                runOnUiThread(() -> {
+                    statusText.setText("状态: 指纹库加载失败");
+                    Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+                });
+            }
+        });
     }
 
     private void resetDatabase() {
-        try {
-            fingerprintStore.resetToSeed(this);
-            scanWindow.clear();
-            loadDatabase();
-            Toast.makeText(this, "已恢复示例指纹库", Toast.LENGTH_SHORT).show();
-        } catch (IOException e) {
-            Toast.makeText(this, "恢复失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
-        }
+        setControlsEnabled(false);
+        statusText.setText("状态: 正在恢复示例指纹库");
+        backgroundExecutor.execute(() -> {
+            try {
+                fingerprintStore.resetToSeed(this);
+                synchronized (scanWindowLock) {
+                    scanWindow.clear();
+                }
+                FingerprintDatabase loadedDatabase = fingerprintStore.load(this);
+                database = loadedDatabase;
+                runOnUiThread(() -> {
+                    floorMapView.setDatabase(loadedDatabase);
+                    statusText.setText("状态: 已恢复示例指纹库");
+                    setControlsEnabled(true);
+                    Toast.makeText(this, "已恢复示例指纹库", Toast.LENGTH_SHORT).show();
+                });
+            } catch (IOException e) {
+                runOnUiThread(() -> {
+                    statusText.setText("状态: 恢复失败");
+                    setControlsEnabled(true);
+                    Toast.makeText(this, "恢复失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                });
+            }
+        });
     }
 
     private void saveCurrentFingerprint() {
-        if (scanWindow.isEmpty()) {
+        if (database == null) {
+            Toast.makeText(this, "指纹库尚未加载完成", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean hasScans;
+        synchronized (scanWindowLock) {
+            hasScans = !scanWindow.isEmpty();
+        }
+        if (!hasScans) {
             Toast.makeText(this, "请先开始扫描并收集至少 2 帧数据", Toast.LENGTH_SHORT).show();
             return;
         }
@@ -168,32 +232,64 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.Liste
             Toast.makeText(this, "坐标格式不正确", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        Map<String, List<Integer>> grouped = new LinkedHashMap<>();
-        for (Map<String, Integer> scan : scanWindow) {
-            for (Map.Entry<String, Integer> entry : scan.entrySet()) {
-                grouped.computeIfAbsent(entry.getKey(), key -> new ArrayList<>()).add(entry.getValue());
+        setControlsEnabled(false);
+        statusText.setText("状态: 正在保存指纹点");
+        backgroundExecutor.execute(() -> {
+            List<Map<String, Integer>> windowSnapshot;
+            synchronized (scanWindowLock) {
+                windowSnapshot = new ArrayList<>(scanWindow);
             }
-        }
 
-        FingerprintPoint point = new FingerprintPoint();
-        point.id = pointName;
-        point.x = x;
-        point.y = y;
-        for (Map.Entry<String, List<Integer>> entry : grouped.entrySet()) {
-            if (entry.getValue().size() >= 2) {
-                point.samples.put(entry.getKey(), positioningEngine.summarizeSamples(entry.getValue()));
+            Map<String, List<Integer>> grouped = new LinkedHashMap<>();
+            for (Map<String, Integer> scan : windowSnapshot) {
+                for (Map.Entry<String, Integer> entry : scan.entrySet()) {
+                    grouped.computeIfAbsent(entry.getKey(), key -> new ArrayList<>()).add(entry.getValue());
+                }
             }
-        }
 
-        database.fingerprints.add(point);
-        try {
-            fingerprintStore.save(this, database);
-            floorMapView.setDatabase(database);
-            Toast.makeText(this, "指纹点已保存: " + pointName, Toast.LENGTH_SHORT).show();
-        } catch (IOException e) {
-            Toast.makeText(this, "保存失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
-        }
+            FingerprintPoint point = new FingerprintPoint();
+            point.id = pointName;
+            point.x = x;
+            point.y = y;
+            for (Map.Entry<String, List<Integer>> entry : grouped.entrySet()) {
+                if (entry.getValue().size() >= 2) {
+                    point.samples.put(entry.getKey(), positioningEngine.summarizeSamples(entry.getValue()));
+                }
+            }
+
+            FingerprintDatabase currentDatabase = database;
+            if (currentDatabase == null) {
+                runOnUiThread(() -> {
+                    statusText.setText("状态: 指纹库不可用");
+                    setControlsEnabled(true);
+                });
+                return;
+            }
+
+            currentDatabase.fingerprints.add(point);
+            try {
+                fingerprintStore.save(this, currentDatabase);
+                runOnUiThread(() -> {
+                    floorMapView.setDatabase(currentDatabase);
+                    statusText.setText("状态: 指纹点已保存");
+                    setControlsEnabled(true);
+                    Toast.makeText(this, "指纹点已保存: " + pointName, Toast.LENGTH_SHORT).show();
+                });
+            } catch (IOException e) {
+                runOnUiThread(() -> {
+                    statusText.setText("状态: 保存失败");
+                    setControlsEnabled(true);
+                    Toast.makeText(this, "保存失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                });
+            }
+        });
+    }
+
+    private void setControlsEnabled(boolean enabled) {
+        startButton.setEnabled(enabled);
+        stopButton.setEnabled(enabled);
+        saveFingerprintButton.setEnabled(enabled);
+        resetDatabaseButton.setEnabled(enabled);
     }
 
     @NonNull
