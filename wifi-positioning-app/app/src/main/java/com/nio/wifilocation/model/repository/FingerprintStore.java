@@ -1,9 +1,10 @@
-package com.nio.wifilocation;
+package com.nio.wifilocation.model.repository;
 
 import android.content.Context;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.nio.wifilocation.model.entity.FingerprintDatabase;
 
 import java.io.BufferedReader;
 import java.io.File;

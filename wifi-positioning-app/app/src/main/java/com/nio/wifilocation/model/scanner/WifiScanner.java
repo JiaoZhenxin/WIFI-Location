@@ -1,4 +1,4 @@
-package com.nio.wifilocation;
+package com.nio.wifilocation.model.scanner;
 
 import android.Manifest;
 import android.content.BroadcastReceiver;
@@ -29,8 +29,8 @@ public class WifiScanner {
     private final WifiManager wifiManager;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Listener listener;
-    private boolean running;
     private final long scanIntervalMs = 2200L;
+    private boolean running;
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override

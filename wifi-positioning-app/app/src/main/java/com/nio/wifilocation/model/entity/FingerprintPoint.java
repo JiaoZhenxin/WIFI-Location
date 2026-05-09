@@ -1,4 +1,4 @@
-package com.nio.wifilocation;
+package com.nio.wifilocation.model.entity;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

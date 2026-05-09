@@ -1,4 +1,4 @@
-package com.nio.wifilocation;
+package com.nio.wifilocation.model.service;
 
 public class TemporalPositionFilter {
     private final double[][] p = new double[4][4];

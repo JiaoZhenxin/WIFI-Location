@@ -1,5 +1,7 @@
 package com.nio.wifilocation;
 
+import com.nio.wifilocation.model.service.PositioningEngine;
+
 import org.junit.Assert;
 import org.junit.Test;
 

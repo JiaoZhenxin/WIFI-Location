@@ -1,4 +1,4 @@
-package com.nio.wifilocation;
+package com.nio.wifilocation.model.entity;
 
 import java.util.ArrayList;
 import java.util.List;

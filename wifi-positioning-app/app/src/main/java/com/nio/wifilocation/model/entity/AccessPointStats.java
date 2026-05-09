@@ -1,4 +1,4 @@
-package com.nio.wifilocation;
+package com.nio.wifilocation.model.entity;
 
 public class AccessPointStats {
     public double mean;

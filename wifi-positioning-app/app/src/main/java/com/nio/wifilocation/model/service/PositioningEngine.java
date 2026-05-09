@@ -1,4 +1,9 @@
-package com.nio.wifilocation;
+package com.nio.wifilocation.model.service;
+
+import com.nio.wifilocation.model.entity.AccessPointStats;
+import com.nio.wifilocation.model.entity.FingerprintDatabase;
+import com.nio.wifilocation.model.entity.FingerprintPoint;
+import com.nio.wifilocation.model.entity.PositionEstimate;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -55,7 +60,7 @@ public class PositioningEngine {
             return new PositionEstimate(0.0, 0.0, 0.0, 0.0, 99.0, Collections.emptyList());
         }
 
-        scores.sort(Comparator.comparingDouble((PositionEstimate.CandidateScore s) -> s.score).reversed());
+        scores.sort(Comparator.comparingDouble((PositionEstimate.CandidateScore score) -> score.score).reversed());
         List<PositionEstimate.CandidateScore> top = scores.subList(0, Math.min(TOP_K, scores.size()));
 
         double weightSum = 0.0;

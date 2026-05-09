@@ -1,4 +1,4 @@
-package com.nio.wifilocation;
+package com.nio.wifilocation.view;
 
 import android.content.Context;
 import android.graphics.Canvas;
@@ -9,8 +9,9 @@ import android.view.View;
 
 import androidx.annotation.Nullable;
 
-import java.util.ArrayList;
-import java.util.List;
+import com.nio.wifilocation.model.entity.FingerprintDatabase;
+import com.nio.wifilocation.model.entity.FingerprintPoint;
+import com.nio.wifilocation.model.entity.PositionEstimate;
 
 public class FloorMapView extends View {
     private final Paint gridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
